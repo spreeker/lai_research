@@ -32,38 +32,40 @@ def _add_mesurement_plots(ds_to_plot, predictors, x, ax2, ax3, ax4, ax5):
 
     handles = []
 
-    ax2.set_ylabel('C')
+    # ax2.set_ylabel('C')
     if 'tmp' in predictors:
         y_tmp_values = ds_to_plot['tmp']
-        tmp, = ax2.plot(x, y_tmp_values, color='r', label='T')
+        tmp, = ax2.plot(x, y_tmp_values, color='r', label='Temperature')
         handles.append(tmp)
     if 'tmp_gdd' in predictors:
         y_tmp_values = ds_to_plot['tmp_gdd']
-        tmp2, = ax2.plot(x, y_tmp_values, color='orange', label='T2')
+        tmp2, = ax2.plot(
+            x, y_tmp_values, color='orange', label='Temperature > 5')
         handles.append(tmp2)
 
-    ax3.set_ylabel('mm')
+    # ax3.set_ylabel('mm')
     if 'pre' in predictors:
         y_pre_values = ds_to_plot['pre']
-        pre, = ax3.plot(x, y_pre_values, color='b', label='P')
+        pre, = ax3.plot(x, y_pre_values, color='b', label='Precipitation')
         handles.append(pre)
 
     if 'pre_one' in predictors:
         pre_one = ds_to_plot['pre_one']
-        pre2, = ax3.plot(x, pre_one, color='orange', label='T2')
+        pre2, = ax3.plot(
+            x, pre_one, color='orange', label='Precipitation memory')
         handles.append(pre2)
 
-    ax4.set_ylabel('hPa')
+    # ax4.set_ylabel('hPa')
     if 'vap' in predictors:
         y_vap_values = ds_to_plot['vap']
-        vap, = ax4.plot(x, y_vap_values, color='y', label='V')
+        vap, = ax4.plot(x, y_vap_values, color='y', label='Vapour pressure')
         handles.append(vap)
 
     # vap2, = ax4.plot(x[8:], y_vap_avg_values[8:], color='orange', label='T2')
-    ax5.set_ylabel('mm')
+    # ax5.set_ylabel('mm')
     if 'pet' in predictors:
         y_pet_values = ds_to_plot['pet']
-        pet, = ax5.plot(x, y_pet_values, label='PE')
+        pet, = ax5.plot(x, y_pet_values, label='Potential Evapotranspiration')
         handles.append(pet)
 
     return handles
@@ -123,7 +125,7 @@ def plot(timestamps, mlai, plai, datasets,
     rmse = calc_rmse(plai[:120], mlai[:120])
 
     pyplot.figtext(
-        0.83, 0.84, f'rmse {rmse:.4f}', fontsize=10,
+        0.93, 0.84, f'rmse {rmse:.4f}', fontsize=10,
         horizontalalignment='center',
         verticalalignment='center', bbox=dict(facecolor='white', alpha=1),
     )

@@ -127,7 +127,7 @@ def load_lai_from_hdf_nasa_v006():
     if not hdf_files:
         h, v = conf['h'], conf['v']
         logging.error('No hdf4 nasa LAI data found %d %d', h, v)
-        return
+        return []
 
     hdf_files.sort()
     # log.debug(hdf_files)
@@ -200,7 +200,7 @@ def get_lai_gdal_modis_files_0006():
 
     if not hdf_files:
         log.info("no source lai files found")
-        return
+        return []
 
     hdf_gdal = []
     hdf_files = set(hdf_files)
@@ -208,7 +208,7 @@ def get_lai_gdal_modis_files_0006():
     seen_files = set()
     for hdf_name in hdf_files:
         file_name = hdf_name.split('/')[-1]
-        log.error(file_name)
+        # log.error(file_name)
         if file_name in seen_files:
             log.debug('Duplicate %s', file_name)
             log.error(file_name)
@@ -245,6 +245,7 @@ def extract_lai_meta_v006():
     """
     Extract from one modis file the META information
     """
+
     for hdf_gdal_name in get_lai_gdal_modis_files_0006():
         ds, geotransform, projection = read_modis.load_modis_data(
             hdf_gdal_name
@@ -257,6 +258,8 @@ def extract_lai_meta_v006():
         ds = None
         del ds
         break
+    else:
+        return None
 
     return geotransform, projection, bbox
 
@@ -266,12 +269,23 @@ def store_meta():
 
     TODO maybe CF complient so we can use panoply etc?
     """
-    geotransform, projection, bbox = extract_lai_meta()
+    meta = extract_lai_meta_v006()
+
+    if not meta:
+        return
+
+    geotransform, projection, bbox = meta
     h5util.save('lai/meta/', [bbox], attrs={
         'geotransform': geotransform,
         'projection': str(projection),
         'bbox': bbox,
     })
+
+
+def load_meta():
+    m = h5util.load_dataset('lai/meta/', attrs=True)
+    log.error(m)
+    return m['geotransform'], m['projection'], m['bbox']
 
 
 def make_cube():
@@ -484,7 +498,7 @@ def plot_lai(timestamps, lai_values, smooth):
 
     assert len(smooth) == len(lai_values)
 
-    pyplot.plot(timestamps, lai_values, label='Original LAI dataset' )
+    pyplot.plot(timestamps, lai_values, label='Original LAI dataset')
 
     pyplot.plot(timestamps, smooth, label='smooth')
 
@@ -536,6 +550,9 @@ def plot_map(layer=10):
 
 
 def make_hv_cube():
+    """
+    Make cube of LAI data for modis tile (hv)
+    """
 
     LAI_LAYERS.sort()
 
@@ -545,13 +562,13 @@ def make_hv_cube():
 
         # timestamps = [time.timestamp() for time in timestamps]
         log.debug('X- time count %d', len(timestamps))
-
         # pyplot.scatter(timestamps, [1 for x in timestamps])
         # pyplot.show()
+        log.debug('make smooth')
+        smooth = make_smooth_cube(timestamps, cube, 2000, 2000)
+        convert_to_month_cube(timestamps, smooth, 'smooth_month')
+        # convert_to_month_cube(timestamps, cube, 'smooth_month')
 
-        # smooth = make_smooth_cube(timestamps, cube, 1000, 1000)
-        # convert_to_120month_cube(timestamps, smooth, 'smooth_month')
-        convert_to_month_cube(timestamps, cube, 'smooth_month')
         LAI_LAYERS.clear()
 
 

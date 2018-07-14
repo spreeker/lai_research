@@ -32,9 +32,11 @@ import h5util
 from settings import conf
 from create_lai_cube_v006 import load_lai_from_hdf_nasa_v006
 from create_lai_cube_v006 import make_hv_cube
+from create_lai_cube_v006 import store_meta
 import extract_green
 import extract_CRU
 import multi_regression_006
+import green_world
 
 
 log = logging.getLogger(__name__)
@@ -70,6 +72,10 @@ def action(args):
             extract_green.modis_hv_extract(path)
     # step 2
     if args.extract_cru:
+        if h5util.layer_exists('cru'):
+            log.debug('cru Alrady there..')
+            return
+
         extract_CRU.collect_cru_v006()
 
     # step 3
@@ -88,13 +94,20 @@ def action(args):
             plotlocation = True
         multi_regression_006.main_world(plotlocation)
 
+    # extra stuff
+    if args.laistats:
+        green_world.main_green_world()
+
+    if args.store_meta:
+        store_meta()
+
 
 def setup_conf(h, v, args):
 
     hdf5_path = os.path.join(
         settings.PROJECT_ROOT,
         # "landuse_german_forest",
-        f"world_modis_hdf5_2",
+        f"world_modis_hdf5_3",
         # "MCD12Q1.A2011001.h18v03.051.2014288191624.hdf"
         f"h{h:02d}v{v:02d}.hdf"
     )
@@ -106,6 +119,8 @@ def setup_conf(h, v, args):
     conf['groupname'] = loc_key
     conf['hdf5storage'] = hdf5_path
     conf['v006'] = True
+    if args.debug:
+        conf['debug'] = True
     log.debug('conf setup for %s %s', h, v)
 
 
@@ -123,6 +138,7 @@ def main(args):
 
     if args.location:
         h, v = args.location
+        conf['csv'] = f'result-run-auto-h{h:02}-v{v:02}.csv'
         setup_conf(h, v, args)
         action(args)
         return
@@ -144,7 +160,13 @@ def main(args):
         conf['greenrange'] = args.greenrange
     g1, g2 = conf['greenrange']
 
-    conf['csv'] = f'result-run-auto-{boxlabel}-g{g1}-{g2}.csv'
+    csv = os.path.join(
+        settings.PROJECT_ROOT,
+        'csv_predictors',
+        f'result-run-auto-{boxlabel}-g{g1}-{g2}.csv'
+    )
+
+    conf['csv'] = csv
     for h, v in modis_sinodal_grid(*args.box):
         log.info('TILE  h %d v %d', h, v)
         setup_conf(h, v, args)
@@ -178,6 +200,12 @@ if __name__ == '__main__':
         action='store_true',
         default=False,
         help="Load raw hdf nasa data from direcotory")
+
+    inputparser.add_argument(
+        '--laistats',
+        action='store_true',
+        default=False,
+        help="Create LAI min, max, mean for plant type")
 
     inputparser.add_argument(
         '--smooth',

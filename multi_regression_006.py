@@ -19,6 +19,7 @@ import modis_map
 import read_modis
 from datetime import datetime
 
+import h5util
 import settings
 from settings import conf
 import extract_CRU
@@ -26,6 +27,7 @@ import create_lai_cube_v006
 import plot_predictors_v006
 
 from plot_map_progress import plot_lai
+from extract_CRU import NC_VARS as CRU_IDX
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
@@ -34,20 +36,76 @@ logging.basicConfig(level=logging.DEBUG)
 
 LOCATIONS_MODEL_RMSE = {}
 
-CRU_IDX = ('tmp', 'vap', 'pet', 'pre')
+# We use the variable declared in extract_cru to avoid
+# mistakes.
+# CRU_IDX = ('tmp', 'vap', 'pet', 'pre')
 
 OPTIONS = {
     'debug': False
     # 'debug': True
 }
 
+# memory model functions
+
+
+def tmp_gdd(lcru):
+    """
+    temperature below 5.
+    """
+    tmp = np.copy(lcru[:, CRU_IDX.index('tmp')])
+    tmp[tmp < 5] = 0
+    return tmp
+
+
+def tmp_one(lcru):
+    tmp = np.copy(lcru[:, CRU_IDX.index('tmp')])
+    tmpone = np.roll(tmp, 1)
+    return tmpone
+
+
+def pet_one(lcru):
+    tmp = np.copy(lcru[:, CRU_IDX.index('pet')])
+    tmpone = np.roll(tmp, 1)
+    return tmpone
+
+
+def vap_one(lcru):
+    vap = np.copy(lcru[:, CRU_IDX.index('vap')])
+    tmpone = np.roll(vap, 1)
+    return tmpone
+
+
+def pre_one(lcru):
+    pre = np.copy(lcru[:, CRU_IDX.index('pre')])
+    preone = np.roll(pre, 1)
+    return preone
+
+
+def pre_two(lcru):
+    pre = np.copy(lcru[:, CRU_IDX.index('pre')])
+    pretwo = np.roll(pre, 2)
+    return pretwo
+
+
+def jolly_tmp(lcru):
+    tmp = np.copy(lcru[:, CRU_IDX.index('tmp')])
+    tmp = (tmp + 2) / 7
+    return tmp
+
+
+def jolly_vap(lcru):
+    vap = np.copy(lcru[:, CRU_IDX.index('vap')])
+    vap = 1 - (vap + 0.9) / 50
+    return vap
+
+
 MODEL_OPTIONS = {
-    # 'p4': ['pre', 'pet', 'vap', 'tmp'],
+    # 'Multivariate Formula': ['pre', 'pet', 'vap', 'tmp'],
     # 'p3_tmp-vap-pet': ['tmp', 'vap', 'pet'],
     # 'p2_vap_pre': ['vap', 'pre'],
     # 'p3_vap_pre_tmp_one': ['vap', 'pre', tmp_one],
-    # 'p2_vap_pet': ['vap', 'pet',],
-    # 'p2_pet_pre': ['pet', 'pre',],
+    # 'p2_vap_pet': ['vap', 'pet'],
+    # 'p2_pet_pre': ['pet', 'pre'],
     # 'p2_tv': ['tmp', 'vap'],
     # 'p3_pre_pre_pet': [pre_one, 'pre', 'pet'],
     # 'gdd2': [tmp_gdd, pre_one],
@@ -55,17 +113,24 @@ MODEL_OPTIONS = {
     # 'p6': ['tmp', 'pre', 'vap', 'pet', pre_one],
     # 'gdd_tmp': [tmp_gdd, 'tmp'],
     # 'gdd_tmp_vap': [tmp_gdd, 'tmp', 'vap'],
-    'tmp': ['tmp'],
-    'vap': ['vap'],
-    'pre': ['pre'],
-    'pet': ['pet'],
+    # 'tmp': ['tmp'],
+    # 'vap': ['vap'],
+    # 'pre': ['pre'],
+    # 'pet': ['pet'],
+    # '1tmp': [tmp_one],
+    # '1vap': [vap_one],
+    # '1pre': [pre_one],
+    # '1pet': [pet_one],
+    # 'jolly_tmp': [jolly_tmp],
+    'Jolly Formula': [jolly_tmp, jolly_vap],
+    'ANPI': ['pre', pre_one, pre_two, tmp_gdd],
+    'SFormula': ['pet', pre_two, jolly_vap, 'tmp', tmp_gdd],
 }
 
 
-model_keys = list(MODEL_OPTIONS.keys())
-model_keys.sort()
-
-log.debug(model_keys)
+MODEL_KEYS = list(MODEL_OPTIONS.keys())
+MODEL_KEYS.sort()
+log.debug(MODEL_KEYS)
 # pickle_file = 'europe_21658.pickle'
 
 
@@ -81,16 +146,80 @@ def save_result_to_csv(locations_model_rmse):
 
     with open(filename, 'a') as csv:
         if addheader:
-            csv.write('lon,lat,%s\n' % (" ".join(model_keys)))
+            csv.write('lon,lat,%s\n' % (" ".join(MODEL_KEYS)))
         for (lon, lat), models in locations_model_rmse.items():
             models.sort()
             mdl = models[0][1]
-            if mdl not in model_keys:
+            if mdl not in MODEL_KEYS:
                 continue
-            idx = model_keys.index(mdl)
+            idx = MODEL_KEYS.index(mdl)
             csv.write('%.2f,%.2f,%s\n' % (lon, lat, idx))
 
     log.info('saved %s', filename)
+
+
+def save_model_world_netcdf(locations_model_rmse: dict):
+    """
+    -Store best models in world layer
+    """
+    models = "--".join(MODEL_KEYS)
+    gt_g, lt_g = conf['greenrange']
+    groupname = f'best-{models}_{gt_g}_{lt_g}'
+    world_data = h5util.world_data_load(groupname)
+    grid_idx, lons, lats, empty = h5util.world_grid()
+
+    # check that we have world layer to put model in
+    if world_data is None:
+        world_data = empty
+
+    for (lon, lat), model_scores in locations_model_rmse.items():
+        x, y = grid_idx[(lon, lat)]
+        model_scores.sort()
+        mdl = model_scores[0][1]
+        if mdl not in MODEL_KEYS:
+            continue
+        idx = MODEL_KEYS.index(mdl)
+        world_data[y][x] = idx
+
+    # the amount of non fill values should greater equal
+    # to the locations we updated
+    # assert np.sum(world_data > -1) >= len(locations_model_rmse)
+    # save the best scoring models
+    h5util.save_netcdf(groupname, world_data)
+
+
+def save_rmse_world_scores(locations_model_rmse: dict):
+    """
+    -Store rmse scores of each model in world layer
+    """
+    rmse_scores = {}
+    grid_idx, lons, lats, empty = h5util.world_grid()
+
+    gt_g, lt_g = conf['greenrange']
+    # create of load rmse model world data
+    for model_name in MODEL_KEYS:
+        layer_name = f'{model_name}_{gt_g}_{lt_g}'
+        rmse_world_data = h5util.world_data_load(layer_name)
+        if rmse_world_data is None:
+            rmse_world_data = np.copy(empty)
+        rmse_scores[model_name] = rmse_world_data
+
+    for (lon, lat), model_scores in locations_model_rmse.items():
+        # store all rmse scores for each model
+        x, y = grid_idx[(lon, lat)]
+        for rmse, mdl in model_scores:
+            # lookup the model worldmap
+            if not mdl:
+                continue
+            current = rmse_scores[mdl][y][x]
+            # set the best rmse, lower is better
+            if current == -1 or current > rmse:
+                rmse_scores[mdl][y][x] = rmse
+
+    # save updated rmse scores for models
+    for model_name, world_score in rmse_scores.items():
+        layer_name = f'{model_name}_{gt_g}_{lt_g}'
+        h5util.save_netcdf(layer_name, world_score)
 
 
 def solver_function_multi(
@@ -126,6 +255,8 @@ def solver_function_multi(
             plot_predictor_labels.append(ds_key.__name__)
 
         input_ar = normalize(input_ar, valid)
+        # input_ar = input_ar[valid]
+
         assert len(input_ar) == len(y)
         measurements.append(input_ar)
 
@@ -167,11 +298,12 @@ def solver_function_multi(
 
     timestamps = np.array(timestamps)
     timestamps = timestamps[valid]
+    aic = aic_criterion(y, y_pred, plot_predictor_labels, measurements)
     # datasets[f'pred_{label}'] = y_pred
     plot_predictors_v006.plot(
         timestamps, y, y_pred,
         measurements, predictors=plot_predictor_labels, p_label=label,
-        text=predictor_params,
+        text=predictor_params, aic=aic
     )
 
     calculate_ss(y, y_pred, measurements, plot_predictor_labels, parameters)
@@ -211,6 +343,16 @@ def calculate_ss(y, y_pred, measurements, plot_predictor_labels, parameters):
     log.info('R2 %.3f', 1 - fvu)
 
 
+# Local analysis graphs
+LOCATION_MODIS_MAP = {
+    'h28v08': 'Malaysia',
+    'h18v03': 'Germany',
+    'h12v10': 'Brasil',
+    'h08v07': 'Mexico',
+    'h10v05': 'USA'
+}
+
+
 def make_local_plot(grid, lai, cru, timestamps, geotransform, projection):
     """Plot LAI, predicted LAI and predictors (temp, vap, pre, pet)
     of lon lat location defined in settings for current group
@@ -219,6 +361,11 @@ def make_local_plot(grid, lai, cru, timestamps, geotransform, projection):
     lon = settings.locations[group]['lon']
     lat = settings.locations[group]['lat']
     x, y = read_modis.determine_xy(geotransform, projection, lon, lat)
+
+    location_name = group
+
+    if group in LOCATION_MODIS_MAP:
+        location_name = LOCATION_MODIS_MAP[group]
 
     log.debug('%s %s', x, y)
     lai_at_location = lai[:, int(y), int(x)]
@@ -245,7 +392,7 @@ def make_local_plot(grid, lai, cru, timestamps, geotransform, projection):
         solver_function_multi(
             cru_at_location, lai_at_location, timestamps,
             predictors=predictors,
-            label=f'{group}-{label}', showplot=True,
+            label=f'{location_name}  {label}', showplot=True,
             valid=valid
         )
 
@@ -257,6 +404,7 @@ def normalize(arr_source, valid):
     # valid lai data. Sometimes we only downloaded part of
     # the timeseries. and we have gaps / zeros.
     arr = arr_source[valid]
+    # return arr
     mean = np.mean
     std = np.std
     normalized_data = (arr - mean(arr, axis=0)) / std(arr, axis=0)
@@ -288,6 +436,13 @@ def valid_box(box):
     if len(box) != 4:
         return False
 
+    (lx, ly), (rx, ry), (dx, dy), (ux, uy) = box
+
+    if len(set([uy, dy, ly, ry])) < 2:
+        return False
+    if len(set([ux, dx, lx, rx])) < 2:
+        return False
+
     # if box[1][1] == box[2][1]:
     #     log.debug('same y')
     #     return False
@@ -305,20 +460,26 @@ def extract_grid_data(box, lai, green_m, grid, debug=False):
 
     l, r, d, u = box
 
-    log.info('%d:%d %d:%d', u[1], d[1], l[0], r[0])
+    # log.info('%d:%d %d:%d', u[1], d[1], l[0], r[0])
     cube_lai_at_location = lai[:, u[1]:d[1], l[0]:r[0]]
+    # work with copy!
+    cube_lai_at_location = cube_lai_at_location.copy()
+
     # p4grid.extend([pr, pl, pu, pd])
+
     g_at_loc = green_m[u[1]:d[1], l[0]:r[0]]
 
     def plot(data):
-        valid_px = grid_to_pixels(grid)
+        # valid_px = grid_to_pixels(grid)
         # plot the cru pixel we are working on
-        for j, (x, y) in enumerate(valid_px):
-            plt.plot(x, y, 'r+')
-
+        #for j, (x, y) in enumerate(valid_px):
+        #    plt.plot(x, y, 'o')
+        plt.plot(u[0], u[1], 'r+')
+        plt.plot(d[0], d[1], 'r+')
+        plt.plot(r[0], r[1], 'r+')
+        plt.plot(l[0], l[1], 'r+')
         plt.imshow(data)
-        geotransform, projection, bbox = \
-            create_lai_cube_v006.extract_lai_meta_v006()
+        geotransform, projection, bbox = create_lai_cube_v006.load_meta()
         plt.show()
 
     if debug:
@@ -326,19 +487,15 @@ def extract_grid_data(box, lai, green_m, grid, debug=False):
         # plot what we are doing.
         # and check if sliceing is going ok
         dlai = np.copy(lai[20, :, :])
-        dlai[u[1]:d[1], l[0]:r[0]] = 30
+        dlai[dlai > 100] = 0
+        dlai[u[1]:d[1], l[0]:r[0]] = 210
         plot(dlai)
+        plt.show()
 
         green_c = np.copy(green_m)
-        green_c[u[1]:d[1], l[0]:r[0]] = 30
+        green_c[green_c > 8] = 0
+        green_c[u[1]:d[1], l[0]:r[0]] = 18
         plot(green_c)
-
-        plt.imshow(g_at_loc)
-        # plt.colorbar()
-        plt.show()
-        # green_mask = np.logical_and(g_at_loc > 0
-        plt.imshow(g_at_loc)
-        # plt.colorbar()
         plt.show()
 
     return cube_lai_at_location, g_at_loc
@@ -350,17 +507,18 @@ def _collect_lai_data_location(grid, i, g, box, lai, green_m, invalid):
     """
 
     cube_lai_at_location, green_mask = extract_grid_data(
-        box, lai, green_m, grid, debug=OPTIONS['debug'])
+        box, lai, green_m,
+        grid, debug=OPTIONS['debug'])
 
     # validate green mask
     if not np.any(green_mask):
         invalid.append((g, 'nogreen'))
-        return
+        return None, None
 
     # we want at least more then 10km²
-    if np.sum(green_mask) < 40:
+    if np.sum(green_mask) < 3:
         invalid.append((g, 'nogreen'))
-        return
+        return None, None
 
     return cube_lai_at_location, green_mask
 
@@ -480,17 +638,26 @@ def calculate_models_for_grid(
 
         cru_at_location = cru[i, :, :]
 
+        if cru_at_location is None:
+            continue
+
         lai_cube, green_mask = _collect_lai_data_location(
             grid, i, g, box, lai, green_m, invalid)
+
+        if lai_cube is None:
+            continue
 
         avg_lai_at_location, valid = _normalized_lai_at_location(
             green_mask, lai_cube, g, invalid)
 
+        if avg_lai_at_location is None:
+            continue
+
         _rmse_one_location(
             cru_at_location,
-            avg_lai_at_location, valid, g,
-            models,
-            timestamps,
+            avg_lai_at_location,
+            valid, g,
+            models, timestamps,
             grid_model_rmse, invalid)
 
     del green_m
@@ -498,51 +665,14 @@ def calculate_models_for_grid(
     return grid_model_rmse, invalid
 
 
-def aic_criterion(models_to_make, datasets):
+def aic_criterion(lai, lai_predicted, predictor_labels, measurements):
     # load hdf5 measurement data.
-    lai = datasets['lai']
-    for p, ds_label in models_to_make.items():
-        p_label = f'pred_{p}'
-        predicted_lai = datasets[p_label]
-        R = np.square(lai - predicted_lai).sum()
-        # print(R)
-        m = len(ds_label)  # len variables
-        n = len(lai)       # measurements
-        A = n * math.log((2*math.pi)/n) + n + 2 + n * math.log(R) + 2 * m
-        print('%s %.4f' % (p, A))
-
-
-def tmp_gdd(lcru):
-    """
-    temperature below 5.
-    """
-    tmp = np.copy(lcru[:, CRU_IDX.index('tmp')])
-    tmp[tmp < 5] = 0
-    return tmp
-
-
-def tmp_one(lcru):
-    tmp = np.copy(lcru[:, CRU_IDX.index('tmp')])
-    tmpone = np.roll(tmp, 1)
-    return tmpone
-
-
-def pet_one(lcru):
-    tmp = np.copy(lcru[:, CRU_IDX.index('pet')])
-    tmpone = np.roll(tmp, 1)
-    return tmpone
-
-
-def vap_one(lcru):
-    tmp = np.copy(lcru[:, CRU_IDX.index('vap')])
-    tmpone = np.roll(tmp, 1)
-    return tmpone
-
-
-def pre_one(lcru):
-    pre = np.copy(lcru[:, CRU_IDX.index('pre')])
-    preone = np.roll(pre, 1)
-    return preone
+    R = np.square(lai - lai_predicted).sum()
+    m = len(predictor_labels)  # len variables
+    n = len(lai)       # measurements
+    aic = n * math.log((2*math.pi)/n) + n + 2 + n * math.log(R) + 2 * m
+    print('%.4f' % (aic))
+    return aic
 
 
 def find_green_location_mask(green):
@@ -657,9 +787,9 @@ def plot_models(data, _extent, lons, lats, invalid, title):
         latlon=True, cmap=cmap, alpha=0.8)
 
     cbar = m.colorbar(im)
-    cbar.ax.set_ylabel(" ".join(model_keys))
+    cbar.ax.set_ylabel(" ".join(MODEL_KEYS))
 
-    # plot_errors(m, invalid)
+    plot_errors(m, invalid)
 
     _plot_and_save(m, cmap, title, i=data.size)
     # help python cleanup
@@ -694,7 +824,7 @@ def plot_scores(scores, extent, lons, lats, _data_g, invalid, title):
     _plot_and_save(m, cmap, f'{title} - mean {mean_rmse}')
 
 
-def plot_model_map(green, grid_model_rmse, invalid, title=None):
+def plot_model_map(grid_model_rmse, invalid, title=None):
 
     grid = grid_model_rmse.keys()
     grid_model_rmse.values()
@@ -877,13 +1007,13 @@ def _plot_rmse_each_model(
             model_option, cru, lai, green, timestamps, grid, box_px)
 
         print(len(locations_model_rmse))
-        plot_model_map(green, locations_model_rmse, invalid, title=title)
+        plot_model_map(locations_model_rmse, invalid, title=title)
 
 
 def create_extraction_areas(boxgrid, geotransform, projection):
     """We determine the boundaties for data extraction of lai / green near grid.
 
-    translate lon, lat to pixel bboxes
+    translate lon, lat to pixel bounding boxes
     """
 
     box_px = []
@@ -909,14 +1039,17 @@ def create_extraction_areas(boxgrid, geotransform, projection):
             x = box_px[i][0]
             box_px[i] = (x, 2399)
 
+    # make sure points are not on one line
+    # they have to form a square.
+
     return box_px
 
 
-def main_world(plotlocation=False):
-    """world mapping entry point. return grid with best models.
+def _load_current_granule():
+    """Load al relevant data of curent modis grid granule.
+
+    current location is (dynamically) set in settings.conf
     """
-    model_options = MODEL_OPTIONS
-    import h5util
 
     # h5util.print_paths()
     try:
@@ -926,12 +1059,13 @@ def main_world(plotlocation=False):
         return
 
     green = h5util.load_dataset('green')
+
     try:
         lai = h5util.load_dataset('lai/smooth_month')
     except (KeyError):
         log.error('no lai data')
         return
-    # lai = h5util.load_dataset('lai/month')
+
     cru = h5util.load_dataset('cru')
     timestamps = [
         datetime.fromtimestamp(t) for t in h5util.load_dataset('months')]
@@ -939,15 +1073,35 @@ def main_world(plotlocation=False):
     geotransform, projection, bbox = \
         create_lai_cube_v006.extract_lai_meta_v006()
 
-    boxgrid = make_box_grid(grid)
+    return grid, green, lai, cru, timestamps, geotransform, projection, bbox
+
+
+def main_world(plotlocation=False):
+    """world mapping entry point. return grid with best models.
+    """
+    model_options = MODEL_OPTIONS
+
+    relevant_data = _load_current_granule()
+
+    if not relevant_data:
+        log.debug('not all data could be collected..')
+        return
+
+    grid, green, lai, cru, timestamps, geotransform, projection, bbox = \
+        relevant_data
 
     # plot graph of single location
     if plotlocation:
         make_local_plot(
-            grid,
-            lai, cru, timestamps,
+            grid, lai, cru, timestamps,
             geotransform, projection)
         return
+
+    # create pixel coordinates to extract relavant LAI data
+    # for every grid location take 0.25 around it as extraction area.
+    # increasing the resulotion should be done here by creating a
+    # much bigger/higer resolution grid.
+    boxgrid = make_box_grid(grid)
     assert len(grid)*4 == len(boxgrid), f'{len(grid)} {len(boxgrid)}'
 
     # make sure grid and boxgrid match
@@ -959,9 +1113,11 @@ def main_world(plotlocation=False):
     locations_model_rmse, invalid = calculate_models_for_grid(
         model_options, cru, lai, green, timestamps, grid, box_px)
 
-    # print(len(locations_model_rmse))
-    # plot_model_map(
-    #     green, locations_model_rmse, invalid, title='lowest rmse', )
+    log.debug('Update %d', len(locations_model_rmse))
+
+    if plotlocation:
+        plot_model_map(locations_model_rmse, invalid, title='lowest rmse', )
+        return
 
     # update global set
     update_locations_model_rmse(locations_model_rmse)
@@ -971,9 +1127,12 @@ def main_world(plotlocation=False):
 
     # now we can plot this in qgis
     log.debug('SQUARES %s', len(LOCATIONS_MODEL_RMSE))
-    save_result_to_csv(locations_model_rmse)
+    # store modis results data into global data grid
+    # save_result_to_csv(locations_model_rmse)
+    save_model_world_netcdf(locations_model_rmse)
+    save_rmse_world_scores(locations_model_rmse)
 
-    # help python cleanup
+    # help python garbadge collector cleanup
     del box_px
     del boxgrid
     del grid
@@ -982,7 +1141,6 @@ def main_world(plotlocation=False):
     del cru
     del geotransform
     del projection
-    del bbox
 
 
 def update_locations_model_rmse(locations_model_rmse):

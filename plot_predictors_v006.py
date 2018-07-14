@@ -32,38 +32,60 @@ def _add_mesurement_plots(ds_to_plot, predictors, x, ax2, ax3, ax4, ax5):
 
     handles = []
 
-    ax2.set_ylabel('C')
+    # ax2.set_ylabel('C')
     if 'tmp' in predictors:
         y_tmp_values = ds_to_plot['tmp']
-        tmp, = ax2.plot(x, y_tmp_values, color='r', label='T')
+        tmp, = ax2.plot(x, y_tmp_values, color='r', label='Temperature')
         handles.append(tmp)
+
     if 'tmp_gdd' in predictors:
         y_tmp_values = ds_to_plot['tmp_gdd']
-        tmp2, = ax2.plot(x, y_tmp_values, color='orange', label='T2')
+        tmp2, = ax2.plot(
+            x, y_tmp_values, color='orange', label='Temperature > 5')
         handles.append(tmp2)
 
-    ax3.set_ylabel('mm')
+    if 'jolly_tmp' in predictors:
+        y_tmp_values = ds_to_plot['jolly_tmp']
+        tmp2, = ax2.plot(
+            x, y_tmp_values, color='orange', label='Temperature (jolly)')
+        handles.append(tmp2)
+
+    # ax3.set_ylabel('mm')
     if 'pre' in predictors:
         y_pre_values = ds_to_plot['pre']
-        pre, = ax3.plot(x, y_pre_values, color='b', label='P')
+        pre, = ax3.plot(x, y_pre_values, color='b', label='Precipitation')
         handles.append(pre)
 
     if 'pre_one' in predictors:
         pre_one = ds_to_plot['pre_one']
-        pre2, = ax3.plot(x, pre_one, color='orange', label='T2')
+        pre2, = ax3.plot(
+            x, pre_one, color='orange', label='Precipitation memory')
         handles.append(pre2)
 
-    ax4.set_ylabel('hPa')
+    if 'pre_two' in predictors:
+        pre_two = ds_to_plot['pre_two']
+        pre3, = ax3.plot(
+            x, pre_two, color='red', label='Precipitation memory 2')
+        handles.append(pre3)
+
+    # ax4.set_ylabel('hPa')
     if 'vap' in predictors:
         y_vap_values = ds_to_plot['vap']
-        vap, = ax4.plot(x, y_vap_values, color='y', label='V')
+        vap, = ax4.plot(x, y_vap_values, color='y', label='Vapour pressure')
+        handles.append(vap)
+
+    # ax4.set_ylabel('hPa')
+    if 'jolly_vap' in predictors:
+        y_vap_values = ds_to_plot['jolly_vap']
+        vap, = ax4.plot(
+            x, y_vap_values, color='y', label='Vapour pressure (jolly)')
         handles.append(vap)
 
     # vap2, = ax4.plot(x[8:], y_vap_avg_values[8:], color='orange', label='T2')
-    ax5.set_ylabel('mm')
+    # ax5.set_ylabel('mm')
     if 'pet' in predictors:
         y_pet_values = ds_to_plot['pet']
-        pet, = ax5.plot(x, y_pet_values, label='PE')
+        pet, = ax5.plot(x, y_pet_values, label='Potential Evapotranspiration')
         handles.append(pet)
 
     return handles
@@ -71,7 +93,7 @@ def _add_mesurement_plots(ds_to_plot, predictors, x, ax2, ax3, ax4, ax5):
 
 def plot(timestamps, mlai, plai, datasets,
          predictors=None, p_label=None, text='',
-         valid=None):
+         valid=None, aic=None):
 
     assert len(timestamps) == len(mlai)
     assert len(mlai) == len(plai)
@@ -96,13 +118,13 @@ def plot(timestamps, mlai, plai, datasets,
     # Three subplots sharing both x/y axes
     f, (ax1, ax2, ax3, ax4, ax5) =  \
         pyplot.subplots(5, sharex=True, sharey=False)
-    pyplot.title(f"LAI for 2001-2010 'pred-{p_label}' Monthly", y=5.08)
+    pyplot.title(f"{p_label}", y=5.08)
 
     x = time_x
     log.info(x.size)
     log.info(y_lai_values.size)
-    lai, = ax1.plot(x, y_lai_values, label='lai')
-    pred, = ax1.plot(x, y_pred_lai, color='g', label='pred')
+    lai, = ax1.plot(x, y_lai_values, label='LAI')
+    pred, = ax1.plot(x, y_pred_lai, color='g', label='Predicted LAI')
 
     handles = _add_mesurement_plots(
         ds_to_plot, predictors, x, ax2, ax3, ax4, ax5)
@@ -111,7 +133,8 @@ def plot(timestamps, mlai, plai, datasets,
 
     # pet2, = ax5.plot(x[8:], y_pet_avg_values[8:], color='orange', label='T2')
 
-    pyplot.legend(handles=handles, bbox_to_anchor=(1.1, 1.05))
+    pyplot.legend(
+        handles=handles, bbox_to_anchor=(1.05, 1.05), prop={'size': 14})
 
     # units
     pyplot.xlabel('Time (Months)')
@@ -129,13 +152,20 @@ def plot(timestamps, mlai, plai, datasets,
     rmse = calc_rmse(plai[:120], mlai[:120])
 
     pyplot.figtext(
-        0.83, 0.84, f'rmse {rmse:.4f}', fontsize=10,
+        0.73, 0.01, f'RMSE {rmse:.4f}', fontsize=10,
         horizontalalignment='center',
         verticalalignment='center', bbox=dict(facecolor='white', alpha=1),
     )
 
+    if aic:
+        pyplot.figtext(
+            0.93, 0.01, f'AIC {aic:.4f}', fontsize=10,
+            horizontalalignment='center',
+            verticalalignment='center', bbox=dict(facecolor='white', alpha=1),
+        )
+
     if text:
-        pyplot.figtext(.3, .955, text, fontsize=10, ha='center')
+        pyplot.figtext(0.3, .02, text, fontsize=10, ha='center')
         # pyplot.suptitle(text)
 
     fig1 = pyplot.gcf()
@@ -143,7 +173,7 @@ def plot(timestamps, mlai, plai, datasets,
     # manager.resize(*manager.window.maxsize())
     pyplot.show()
     _save_plot(fig1, f'{p_label}-graphs')
-    plot_correlation(y_lai_values, y_pred_lai)
+    plot_correlation(y_lai_values, y_pred_lai, title=p_label)
 
 
 def _save_plot(fig, subject):
@@ -151,7 +181,7 @@ def _save_plot(fig, subject):
     date = f'{d.year}-{d.month}-{d.day}'
     tile = conf['groupname']
     imgtarget = os.path.join(
-        'imgs', 'modis', f'{tile}{date}-{subject}.png')
+        'imgs', 'anna', f'{tile}{date}-{subject}.png')
     fig.savefig(imgtarget)
 
 
@@ -171,7 +201,8 @@ def plot_correlation(xarr, yarr, title='LAI - Predicted LAI'):
     # manager = pyplot.get_current_fig_manager()
     # manager.resize(*manager.window.maxsize())
     pyplot.show()
-    _save_plot(fig1, 'correlation')
+    _save_plot(fig1, f'correlation {title}')
+
 
 def make_prediction(datasets):
     label = conf['prediction_option']

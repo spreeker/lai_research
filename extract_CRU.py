@@ -29,10 +29,11 @@ endyear = conf['endyear']
 CACHE = {
     'tmp': {},
     'pre': {},
-    'var': {},
     'vap': {},
     'pet': {},
 }
+
+NC_VARS = ('tmp', 'vap', 'pet', 'pre')
 
 
 def ncdump(nc_fid, verb=True):
@@ -69,7 +70,8 @@ def ncdump(nc_fid, verb=True):
         try:
             print("\t\ttype:", repr(nc_fid.variables[key].dtype))
             for ncattr in nc_fid.variables[key].ncattrs():
-                print('\t\t%s:' % ncattr,                      repr(nc_fid.variables[key].getncattr(ncattr)))
+                print('\t\t%s:' % ncattr,
+                      repr(nc_fid.variables[key].getncattr(ncattr)))
         except KeyError:
             print("\t\tWARNING: %s does not contain variable attributes" % key)
 
@@ -133,17 +135,15 @@ def store_tensor_from_cru(grid, grid_idx):
         - 120 months
         - 4 variables
     """
+    global NC_VARS
     size = len(grid)
     # suqares, 120 months, 4  values
     tensor = np.zeros((size, 120, 4))
-
-    nc_vars = ['tmp', 'vap', 'pet', 'pre']
-
     # reset cache
     for v in CACHE.values():
         v.clear()
 
-    for di, ds_var in enumerate(nc_vars):
+    for di, ds_var in enumerate(NC_VARS):
         if not CACHE.get(ds_var):
             fill_cache(ds_var)
             ds = CACHE[ds_var]['ds']
@@ -171,7 +171,7 @@ def store_tensor_from_cru(grid, grid_idx):
         a = [t.timestamp() for t in CACHE[ds_var]['time']]
         h5util.set_dataset(hdf5, cru_groupname, a)
         # store variable information
-        ds.attrs['vars'] = " ".join(nc_vars)
+        ds.attrs['vars'] = " ".join(NC_VARS)
         log.debug(f'Saved CRU {cru_groupname}')
         d = ["grid", "months", "var"]
         ds.attrs['dimensions'] = " ".join(d)
@@ -216,8 +216,8 @@ def grid_for(bbox):
     grid = []
     grid_idx = []
 
-    for lon_idx, lat in enumerate(lats):
-        for lat_idx, lon in enumerate(lons):
+    for lat_idx, lat in enumerate(lats):
+        for lon_idx, lon in enumerate(lons):
             # if zero values are out of range.
             if lat == 0:
                 continue
@@ -225,7 +225,7 @@ def grid_for(bbox):
                 continue
 
             grid.append((lon, lat))
-            grid_idx.append((lon_idx, lat_idx))
+            grid_idx.append((lat_idx, lon_idx))
 
     return grid, grid_idx
 
