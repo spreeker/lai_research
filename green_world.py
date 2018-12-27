@@ -6,6 +6,7 @@ import os
 import logging
 import numpy as np
 import h5util
+import settings
 
 from multi_regression_006 import _load_current_granule
 from multi_regression_006 import make_box_grid
@@ -125,6 +126,9 @@ def stats_lai_at_location(green_mask, cube_lai_at_location):
     green_mask3d[:, :, :] = green_mask[np.newaxis, :, :]
     # set ALL LAI values not in green mask are ZERO
     cube_lai_at_location[~green_mask3d] = 0
+    # set all values outside greenvalues to 0
+    # > 100 can happen in case of fillvalues
+    cube_lai_at_location[cube_lai_at_location > 100] = 0
     assert cube_lai_at_location.shape == green_mask3d.shape
     # Sum lai values in each layer (month) to array of 120 values
     sum_colums_lai = cube_lai_at_location.sum(axis=1)
@@ -242,7 +246,7 @@ def main_green_world():
 
 def green_type_map(stat):
     """Given 8 green landuse types. Build a map showing the dominant
-    land use type for each gid cell. using stat. [min, max, green_count]
+    land use type for each gid cell. using stat. [min, max, mean, green_count]
     """
     grid_idx, lons, lats, empty = h5util.world_grid()
 
@@ -251,6 +255,7 @@ def green_type_map(stat):
     for idx in range(1, 9):
         green_title = GREEN_TYPES[idx]
         groupname = f'{green_title}-{stat}'
+        print(groupname)
         world_data = h5util.world_data_load(groupname)
         assert world_data is not None
         green_worlds.append(world_data)
@@ -262,22 +267,75 @@ def green_type_map(stat):
     # popular vegetantion
     recorded = np.copy(empty)
 
-    for i, g_counts in enumerate(green_worlds):
+    for i, g_values in enumerate(green_worlds):
         g_value = i+1
         # where lai counts are greater then recorded.
         # set lai type in target
-        target[g_counts > recorded] = g_value
+        # remove invalid value
+        g_values[g_values > 100] = 0
+        target[g_values > recorded] = g_value
         # update the recorded scores.
-        recorded[g_counts > recorded] = g_counts[g_counts > recorded]
+        recorded[g_values > recorded] = g_values[g_values > recorded]
 
     h5util.save_netcdf(f'green_types_{stat}', target)
-    h5util.save_netcdf(f'green_counts_{stat}', recorded)
+    h5util.save_netcdf(f'green_values_{stat}', recorded)
+
+
+def cru_best_map():
+
+    grid_idx, lons, lats, empty = h5util.world_grid()
+
+    green_source = 'green_maps_19.nc'
+
+    settings.conf['world'] = green_source
+
+    best_type_map = h5util.world_data_load('green_types_mean')
+
+    assert best_type_map is not None
+
+    settings.conf['world'] = 'world_rmse_all.nc'
+
+    green_worlds = []
+
+    for idx in range(1, 9):
+        plant_layer = []
+        for cru in ['tmp', 'vap', 'pet', 'pre']:
+            # green_title = GREEN_TYPES[idx]
+            groupname = f'{cru}_{idx-1}_{idx+1}'
+            print(groupname)
+            world_data = h5util.world_data_load(groupname)
+            assert world_data is not None
+            plant_layer.append(world_data)
+
+        assert len(plant_layer) == 4
+        green_worlds.append(plant_layer)
+
+    assert len(green_worlds) == 8
+
+    target = np.copy(empty)
+
+    for idx in range(1, 9):
+        empty_x = np.copy(empty)
+        empty_x.fill(2)
+        cru_x = np.copy(empty)
+
+        for i, cru in enumerate(['tmp', 'vap', 'pet', 'pre']):
+            w = green_worlds[idx-1][i]
+            valid = np.logical_and(w > 0, w < empty_x)
+            empty_x[valid] = w[valid]
+            cru_x[valid] = i
+
+        target[best_type_map == idx] = cru_x[best_type_map == idx]
+
+    settings.conf['world'] = green_source
+    h5util.save_netcdf(f'green_types_max_mean', target)
 
 
 def best_cru_variable():
     grid_idx, lons, lats, empty = h5util.world_grid()
 
-    CRU_VARS = ['pet', 'pre', 'tmp', 'vap']
+    # CRU_VARS = ['pet', 'pre', 'tmp', 'vap']
+    CRU_VARS = ['Jolly Formula', 'ANPI', 'SFormula']
     # load current maps
     for g0 in range(8):
         gidx = g0 + 1
@@ -296,17 +354,18 @@ def best_cru_variable():
 
         # Put back fill value for unchanged values
         recorded[recorded == 2] = -1
-        type_groupname = f'cru-type-{gidx}-{green_title}'
+        type_groupname = f'model-type-{gidx}-{green_title}'
         h5util.save_netcdf(type_groupname, target)
-        rmse_groupname = f'cru-rmse-{gidx}-{green_title}'
+        rmse_groupname = f'model-rmse-{gidx}-{green_title}'
         h5util.save_netcdf(rmse_groupname, recorded)
 
 
 if __name__ == '__main__':
     """
     """
-    for stat in ['min', 'max', 'green_count']:
-        green_type_map(stat)
+    #for stat in ['max', 'min', 'mean', 'std']:
+    #    green_type_map(stat)
+    cru_best_map()
 
     # green_type_map()
     # best_cru_variable()

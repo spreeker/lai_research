@@ -132,10 +132,6 @@ def main(args):
         conf['start_month'] = int(start)
         conf['end_month'] = int(end)
 
-    if args.plotpickle:
-        multi_regression_006.plot_pickle()
-        return
-
     if args.location:
         h, v = args.location
         conf['csv'] = f'result-run-auto-h{h:02}-v{v:02}.csv'
@@ -158,6 +154,7 @@ def main(args):
 
     if args.greenrange:
         conf['greenrange'] = args.greenrange
+
     g1, g2 = conf['greenrange']
 
     csv = os.path.join(
@@ -256,20 +253,14 @@ if __name__ == '__main__':
         type=int,
         nargs=2,
         default=[],
-        help="Give up from and to months [0, 120] 118-120 would mean 2010")
+        help="Give up from and to months [0, 120] 108-120 would mean only 2010")
 
     inputparser.add_argument(
         '--greenrange',
         type=int,
         nargs=2,
-        default=[],
-        help="Give up from and to months [0, 120] 118-120 would mean 2010")
-
-    inputparser.add_argument(
-        '--plotpickle',
-        action='store_true',
-        default=False,
-        help="Give up from and to months [0, 120] 118-120 would mean 2010")
+        default=[0, 9],
+        help="Green range [0, 9] 0-9 would mean [1,2,3,4,5,6,7,8]")
 
     args = inputparser.parse_args()
     main(args)

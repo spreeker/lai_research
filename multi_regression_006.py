@@ -100,7 +100,7 @@ def jolly_vap(lcru):
 
 
 MODEL_OPTIONS = {
-    # 'Multivariate Formula': ['pre', 'pet', 'vap', 'tmp'],
+    'Multivariate Formula': ['pre', 'pet', 'vap', 'tmp'],
     # 'p3_tmp-vap-pet': ['tmp', 'vap', 'pet'],
     # 'p2_vap_pre': ['vap', 'pre'],
     # 'p3_vap_pre_tmp_one': ['vap', 'pre', tmp_one],
@@ -122,9 +122,9 @@ MODEL_OPTIONS = {
     # '1pre': [pre_one],
     # '1pet': [pet_one],
     # 'jolly_tmp': [jolly_tmp],
-    'Jolly Formula': [jolly_tmp, jolly_vap],
-    'ANPI': ['pre', pre_one, pre_two, tmp_gdd],
-    'SFormula': ['pet', pre_two, jolly_vap, 'tmp', tmp_gdd],
+    # 'Jolly Formula': [jolly_tmp, jolly_vap],
+    # 'ANPI': ['pre', pre_one, pre_two, tmp_gdd],
+    # 'SFormula': ['pet', pre_two, jolly_vap, 'tmp', tmp_gdd],
 }
 
 
@@ -160,7 +160,7 @@ def save_result_to_csv(locations_model_rmse):
 
 def save_model_world_netcdf(locations_model_rmse: dict):
     """
-    -Store best models in world layer
+    - Store best models in world layer
     """
     models = "--".join(MODEL_KEYS)
     gt_g, lt_g = conf['greenrange']
@@ -190,10 +190,10 @@ def save_model_world_netcdf(locations_model_rmse: dict):
 
 def save_rmse_world_scores(locations_model_rmse: dict):
     """
-    -Store rmse scores of each model in world layer
+    Store rmse scores of each model in world layer
     """
     rmse_scores = {}
-    grid_idx, lons, lats, empty = h5util.world_grid()
+    grid_idx, _lons, _lats, empty = h5util.world_grid()
 
     gt_g, lt_g = conf['greenrange']
     # create of load rmse model world data
@@ -218,7 +218,42 @@ def save_rmse_world_scores(locations_model_rmse: dict):
 
     # save updated rmse scores for models
     for model_name, world_score in rmse_scores.items():
-        layer_name = f'{model_name}_{gt_g}_{lt_g}'
+        layer_name = f'{model_name}_{gt_g}_{lt_g}_rmse'
+        h5util.save_netcdf(layer_name, world_score)
+
+
+def save_lai_world_scores(locations_model_lai: dict):
+    """
+    Store predicted LAI of each model in world layer
+    """
+    lai_scores = {}
+    grid_idx, _lons, _lats, empty = h5util.world_grid()
+
+    gt_g, lt_g = conf['greenrange']
+
+    # create of load lai model world data
+    for model_name in MODEL_KEYS:
+        layer_name = f'{model_name}_{gt_g}_{lt_g}_lai'
+        plai_world_data = h5util.world_data_load(layer_name)
+        if plai_world_data is None:
+            plai_world_data = np.copy(empty)
+        lai_scores[model_name] = plai_world_data
+
+    for (lon, lat), model_scores in locations_model_lai.items():
+        # store all rmse scores for each model
+        x, y = grid_idx[(lon, lat)]
+        for pred_l, mdl in model_scores:
+            # lookup the model worldmap
+            if not mdl:
+                continue
+            current = lai_scores[mdl][y][x]
+            # set the best rmse, lower is better
+            if current == -1 or current < pred_l:
+                lai_scores[mdl][y][x] = pred_l
+
+    # save updated rmse scores for models
+    for model_name, world_score in lai_scores.items():
+        layer_name = f'{model_name}_{gt_g}_{lt_g}_lai'
         h5util.save_netcdf(layer_name, world_score)
 
 
@@ -278,8 +313,6 @@ def solver_function_multi(
 
     predictor_params = "parameters: "
     for l, p in zip(plot_predictor_labels, parameters):
-        log.debug(l)
-        log.debug(p)
         predictor_params += ' %s %.4f ' % (l, p)
 
     m = measurements
@@ -291,10 +324,15 @@ def solver_function_multi(
         y_pred += p * m[i]
 
     rmse = calc_rmse(y, y_pred)
-    log.info('%s RMSE: %s', label, calc_rmse(y, y_pred))
+    # group = conf['groupname']
+
+    # save_txt_lai(['PREDICTED'])
+    # save_txt_lai(y_pred)
+
+    log.info('%s RMSE: %s', label, rmse)
 
     if not showplot:
-        return label, rmse
+        return label, rmse, y_pred
 
     timestamps = np.array(timestamps)
     timestamps = timestamps[valid]
@@ -310,7 +348,7 @@ def solver_function_multi(
 
 
 def calculate_ss(y, y_pred, measurements, plot_predictor_labels, parameters):
-    """Calculate SSerr SStot, SSreg, R2,
+    """Calculate SSerr SStot, SSreg, R2, fvu
 
     not means are always zero since we have standardized the data.
     """
@@ -326,6 +364,8 @@ def calculate_ss(y, y_pred, measurements, plot_predictor_labels, parameters):
     log.info('ss_tot %.3f', ss_tot)
     log.info('ss_tot_p %.3f', ss_tot_p)
 
+    # save_txt_lai(['ss_err', ss_err, 'ss_tot', ss_tot, 'ss_tot_p', ss_tot_p])
+
     sum_r = 0
     for m, l, p in zip(measurements, plot_predictor_labels, parameters):
         # mss_tot = np.power(m, 2).sum() / n
@@ -336,11 +376,16 @@ def calculate_ss(y, y_pred, measurements, plot_predictor_labels, parameters):
 
     log.info('sum regression %s', sum_r)
     log.info('sum regression + err %.2f', sum_r + ss_err)
+
     # fraction of vaiance unexplained.
     fvu = ss_err / ss_tot
 
     log.info('fvu %.3f', fvu)
     log.info('R2 %.3f', 1 - fvu)
+
+    # save_txt_lai(
+    # ['R2', 1 - fvu, 'fvu', fvu,
+    # 'sun_r', sum_r, 'sum_r + err', sum_r + ss_err])
 
 
 # Local analysis graphs
@@ -348,9 +393,24 @@ LOCATION_MODIS_MAP = {
     'h28v08': 'Malaysia',
     'h18v03': 'Germany',
     'h12v10': 'Brasil',
+    'h12v09': 'Brasil',
     'h08v07': 'Mexico',
-    'h10v05': 'USA'
+    'h10v05': 'USA',
+
+    'h22v03': 'middle_russia',
+    'h21v02': 'siberia',
+    'h13v09': 'south_amerika',
+    'h25v06': 'india',
 }
+
+
+def save_txt_lai(array):
+    d = datetime.now()
+    date = f'{d.year}-{d.month}-{d.day}-{d.hour}'
+    title = conf['groupname']
+    with open(f'laidata-{date}-v006.txt', 'a') as target:
+        line = '%s,%s \n' % (title, ",".join(map(str, array)))
+        target.write(line)
 
 
 def make_local_plot(grid, lai, cru, timestamps, geotransform, projection):
@@ -370,11 +430,20 @@ def make_local_plot(grid, lai, cru, timestamps, geotransform, projection):
     log.debug('%s %s', x, y)
     lai_at_location = lai[:, int(y), int(x)]
     # valid = np.nonzero(lai_at_location)
+    # valid = np.where((lai_at_location > -1) & (lai_at_location < 101))
     valid = np.where(lai_at_location > -1)
 
-    lai_at_location = normalize(lai_at_location, valid)
+    log.debug('MEAN ORG LAI %f', lai_at_location[valid].mean())
+    log.debug('STD ORG LAI %f', lai_at_location[valid].std())
+    log.debug('ORIGINAL LAI: %s', lai_at_location[valid])
+    save_txt_lai(lai_at_location[valid])
+    save_txt_lai(
+        ['MEAN', lai_at_location.mean(), 'STD', lai_at_location.std()])
 
-    # log.debug(lai_at_location)
+    log.debug(['NORMALIZED LAI'])
+    lai_at_location = normalize(lai_at_location, valid)
+    save_txt_lai(lai_at_location)
+
     # find closest cru data
     min_i = -1
     min_d = 999999999999
@@ -404,11 +473,12 @@ def normalize(arr_source, valid):
     # valid lai data. Sometimes we only downloaded part of
     # the timeseries. and we have gaps / zeros.
     arr = arr_source[valid]
+    return arr
     # return arr
     mean = np.mean
     std = np.std
     normalized_data = (arr - mean(arr, axis=0)) / std(arr, axis=0)
-    # normalized_data = normalized_data / abs(normalized_data).max()
+    normalized_data = normalized_data / abs(normalized_data).max()
     return normalized_data
 
 
@@ -472,7 +542,7 @@ def extract_grid_data(box, lai, green_m, grid, debug=False):
     def plot(data):
         # valid_px = grid_to_pixels(grid)
         # plot the cru pixel we are working on
-        #for j, (x, y) in enumerate(valid_px):
+        # for j, (x, y) in enumerate(valid_px):
         #    plt.plot(x, y, 'o')
         plt.plot(u[0], u[1], 'r+')
         plt.plot(d[0], d[1], 'r+')
@@ -532,6 +602,8 @@ def _normalized_lai_at_location(green_mask, cube_lai_at_location, g, invalid):
     green_mask3d[:, :, :] = green_mask[np.newaxis, :, :]
     # set ALL LAI values not in green mask are ZERO
     cube_lai_at_location[~green_mask3d] = 0
+    # invalid fill values should be changed.
+    cube_lai_at_location[cube_lai_at_location > 100] = 0
     assert cube_lai_at_location.shape == green_mask3d.shape
     # Sum lai values in each layer (month) to array of 120 values
     sum_colums_lai = cube_lai_at_location.sum(axis=1)
@@ -569,7 +641,9 @@ def _rmse_one_location(
         avg_lai_at_location,
         valid, g,
         models, timestamps,
-        grid_model_rmse, invalid):
+        grid_model_rmse,
+        grid_model_plai,
+        invalid):
     """
     Find lowest rmse for models of one cru grid
     location in map/dataset
@@ -588,8 +662,10 @@ def _rmse_one_location(
             invalid.append((g, 'normse'))
             return
 
-        m, rmse = answer
+        m, rmse, pred_lai = answer
+
         grid_model_rmse[g].append((rmse, m))
+        grid_model_plai[g].append((pred_lai.mean(), m))
 
 
 def calculate_models_for_grid(
@@ -617,6 +693,7 @@ def calculate_models_for_grid(
     """
     invalid = []
     grid_model_rmse = {}
+    grid_model_plai = {}
 
     min_g, max_g = conf['greenrange']
 
@@ -625,8 +702,10 @@ def calculate_models_for_grid(
     for i, g in enumerate(grid):
         # add default value.
         g = tuple(g)
-        # values should be between 0, 1, 2 will be masked
+        # we insert default value 2
+        # values should be between 0, 1 so 2 will be masked
         grid_model_rmse[g] = [(2, '')]
+        grid_model_plai[g] = [(2, '')]
         box = boxes[i*4:i*4+4]
         # print(box)
 
@@ -658,11 +737,13 @@ def calculate_models_for_grid(
             avg_lai_at_location,
             valid, g,
             models, timestamps,
-            grid_model_rmse, invalid)
+            grid_model_rmse,
+            grid_model_plai,
+            invalid)
 
     del green_m
 
-    return grid_model_rmse, invalid
+    return grid_model_rmse, grid_model_plai, invalid
 
 
 def aic_criterion(lai, lai_predicted, predictor_labels, measurements):
@@ -999,11 +1080,11 @@ def plot_layer(x, lai, green, grid):
 def _plot_rmse_each_model(
         model_options, cru, lai, green, timestamps, grid, box_px):
 
-    for k, v in model_options.items():
+    for k, value in model_options.items():
         title = k
-        model_option = {k: v}
+        model_option = {k: value}
 
-        locations_model_rmse, invalid = calculate_models_for_grid(
+        locations_model_rmse, _, invalid = calculate_models_for_grid(
             model_option, cru, lai, green, timestamps, grid, box_px)
 
         print(len(locations_model_rmse))
@@ -1110,8 +1191,9 @@ def main_world(plotlocation=False):
 
     box_px = create_extraction_areas(boxgrid, geotransform, projection)
 
-    locations_model_rmse, invalid = calculate_models_for_grid(
-        model_options, cru, lai, green, timestamps, grid, box_px)
+    locations_model_rmse, locations_model_lai, invalid = \
+        calculate_models_for_grid(
+            model_options, cru, lai, green, timestamps, grid, box_px)
 
     log.debug('Update %d', len(locations_model_rmse))
 
@@ -1120,7 +1202,7 @@ def main_world(plotlocation=False):
         return
 
     # update global set
-    update_locations_model_rmse(locations_model_rmse)
+    # update_locations_model_rmse(locations_model_rmse)
 
     # plot global data
     # plot_model_map(green, LOCATIONS_MODEL_RMSE, [], title='world')
@@ -1129,8 +1211,10 @@ def main_world(plotlocation=False):
     log.debug('SQUARES %s', len(LOCATIONS_MODEL_RMSE))
     # store modis results data into global data grid
     # save_result_to_csv(locations_model_rmse)
+
     save_model_world_netcdf(locations_model_rmse)
-    save_rmse_world_scores(locations_model_rmse)
+    save_lai_world_scores(locations_model_lai)
+    # save_rmse_world_scores(locations_model_rmse)
 
     # help python garbadge collector cleanup
     del box_px

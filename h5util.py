@@ -269,4 +269,4 @@ def save_netcdf(name, data):
             values[:] = data
             values.valid_min = 0
 
-        log.debug('Saved nc %s %d', name, np.sum(data > -1))
+        log.debug('Saved nc %s %s %d', storage_name, name, np.sum(data > -1))

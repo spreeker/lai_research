@@ -1,10 +1,17 @@
 # LAI_thesis
 
-Leaf Area index thesis of Anna Teuerle.
+Code for research on Leaf Area index.
 
-Because research should be reproducible I publish source code of my thesis here.
+The goal from this code_base is to create global maps
+of the most influential climate variables on vegetation.
+
+Also combinations of climate variables are used.
+
+We combine nasa data of LAI (MOD15A2) with nasa landuse data (MCD12Q1)
+and global climate varables CRU (cru_ts3) form 2000 to 2010.
 
 Software engineering. S.J Preeker.
+
 
 Thesis
 ======

@@ -133,8 +133,8 @@ def plot(timestamps, mlai, plai, datasets,
 
     # pet2, = ax5.plot(x[8:], y_pet_avg_values[8:], color='orange', label='T2')
 
-    pyplot.legend(
-        handles=handles, bbox_to_anchor=(1.05, 1.05), prop={'size': 14})
+    #pyplot.legend(
+    #    handles=handles, bbox_to_anchor=(1.05, 1.05), prop={'size': 14})
 
     # units
     pyplot.xlabel('Time (Months)')
@@ -181,7 +181,7 @@ def _save_plot(fig, subject):
     date = f'{d.year}-{d.month}-{d.day}'
     tile = conf['groupname']
     imgtarget = os.path.join(
-        'imgs', 'anna', f'{tile}{date}-{subject}.png')
+        'imgs', 'weird', f'{tile}{date}-{subject}.png')
     fig.savefig(imgtarget)
 
 

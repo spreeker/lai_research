@@ -37,7 +37,8 @@ conf = {
     # 'greenrange': [3,  5]
     # 'greenrange': [4,  6]
     # 'world': 'world_run_ten.nc'
-    'world': 'jolly_maps_17.nc'
+    'world': 'lai_maps_20_08.nc'
+    # 'world': 'green_maps_19.nc'
 }
 
 # locations used for local analysis / plots / debug
@@ -49,24 +50,39 @@ locations = {
     'german_forest': {'lat': 51.1156, 'lon': 7.5046},
     'h18v03': {'lat': 51.1156, 'lon': 7.5046},
 
-    'amazon': {'lat': -5.709000, 'lon': -66.295},
-    'h12v10': {'lat': -5.709000, 'lon': -66.295},
+    'h12v10': {'lat': -5.266000, 'lon': -67.485},
+
+    'amazon': {'lat': -5.361000, 'lon': -56.485},
+    'h12v09': {'lat': -5.361000, 'lon': -56.485},
 
     'mexico': {'lat': 16.6515, 'lon': -94.6572},
     'h08v07': {'lat': 16.6515, 'lon': -94.6572},
 
     'usa': {'lat': 33.2985, 'lon': -92.4491},
     'h10v05': {'lat': 33.2985, 'lon': -92.4491},
+
+    'india': {'lon': 82.86, 'lat': 26.09},
+    'h25v06': {'lon': 82.86, 'lat': 26.09},
+    'middle_russia': {'lon': 76.16, 'lat': 53.01},
+    'h22v03': {'lon': 76.16, 'lat': 53.01},
+    'south_amerika': {'lon': -42.96, 'lat': -6.00},
+    'h13v09': {'lon': -42.96, 'lat': -6.00},
+    'siberia': {'lon': 79.2, 'lat': 64.23},
+    'h21v02': {'lon': 79.2, 'lat': 64.23},
 }
 
 
 # v005 lai locations. # now we use 'lai_v006_world'
 lai_locations = {
-    'mala': 'Mala_2001_2010',
-    'german_forest': 'MODIS_NL_2001_2010',
-    'amazon': 'Amazon_2001_2010',
-    'usa': 'USA_2001_2010',
-    'mexico': 'Mexico_2001_2010',
+    # 'mala': 'Mala_2001_2010',
+    # 'german_forest': 'MODIS_NL_2001_2010',
+    # 'amazon': 'Amazon_2001_2010',
+    # 'usa': 'USA_2001_2010',
+    # 'mexico': 'Mexico_2001_2010',
+    'india': 'India_2001_2010',
+    'middle_russia': 'Middle_Asisa_2001_2010',
+    'siberia': 'Siberia_2001_2010',
+    'south_amerika': 'South_Ameria_2001_2010',
 }
 
 
