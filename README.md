@@ -10,6 +10,10 @@ Also combinations of climate variables are used.
 We combine nasa data of LAI (MOD15A2) with nasa landuse data (MCD12Q1)
 and global climate varables CRU (cru_ts3) form 2000 to 2010.
 
+code to download and convert datasets should be all there.
+
+Code is very much research and experimental code.
+
 Software engineering. S.J Preeker.
 
 
