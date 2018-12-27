@@ -2,7 +2,7 @@
 
 Code for research on Leaf Area index.
 
-The goal from this code_base is to create global maps
+The goal from this code base is to create global maps
 of the most influential climate variables on vegetation.
 
 Also combinations of climate variables are used.
